@@ -1,5 +1,6 @@
 import SwiftUI
 import Speech
+import UniformTypeIdentifiers
 
 // Main view of the application
 struct ContentView: View {
@@ -33,6 +34,24 @@ struct ContentView: View {
             Text(viewModel.statusMessage)
                 .font(.caption)
                 .foregroundColor(.secondary)
+                
+            // Download button - only appears when transcription is ready
+            if viewModel.isTranscriptionReady {
+                Button(action: {
+                    saveTranscriptionToFile()
+                }) {
+                    HStack {
+                        Image(systemName: "arrow.down.doc.fill")
+                        Text("Download Transcription")
+                    }
+                    .padding()
+                    .foregroundColor(.white)
+                    .background(Color.green)
+                    .cornerRadius(10)
+                    .shadow(radius: 5)
+                }
+                .padding(.bottom, 10)
+            }
 
             // Button to trigger the file selection and start transcription
             Button(action: {
@@ -58,6 +77,26 @@ struct ContentView: View {
         }
     }
 
+    // Function to save transcription to a text file
+    private func saveTranscriptionToFile() {
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.showsTagField = false
+        savePanel.nameFieldStringValue = "transcription.txt"
+        savePanel.allowedContentTypes = [UTType.plainText]
+        
+        if savePanel.runModal() == .OK {
+            guard let url = savePanel.url else { return }
+            
+            do {
+                try viewModel.transcribedText.write(to: url, atomically: true, encoding: .utf8)
+                viewModel.statusMessage = "Transcription saved successfully to \(url.lastPathComponent)"
+            } catch {
+                viewModel.statusMessage = "Error saving file: \(error.localizedDescription)"
+            }
+        }
+    }
+    
     // Function to open the native macOS file picker (NSOpenPanel)
     private func openFilePicker() {
         let panel = NSOpenPanel()
@@ -84,6 +123,7 @@ class TranscriptionViewModel: ObservableObject {
     // Published properties will trigger UI updates when their values change
     @Published var transcribedText: String = "Transcription will appear here..."
     @Published var statusMessage: String = "Ready. Please select an audio file."
+    @Published var isTranscriptionReady: Bool = false
 
     private var speechRecognizer = SFSpeechRecognizer()
     private var recognitionRequest: SFSpeechURLRecognitionRequest?
@@ -138,6 +178,7 @@ class TranscriptionViewModel: ObservableObject {
         request.shouldReportPartialResults = true
         self.transcribedText = ""
         self.statusMessage = "Transcribing..."
+        self.isTranscriptionReady = false
 
         // 3. Start the Recognition Task
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] (result, error) in
@@ -160,8 +201,10 @@ class TranscriptionViewModel: ObservableObject {
                 // Update status message based on the outcome
                 if let error = error {
                     self.statusMessage = "Transcription failed: \(error.localizedDescription)"
+                    self.isTranscriptionReady = false
                 } else {
                     self.statusMessage = "Transcription finished successfully."
+                    self.isTranscriptionReady = true
                 }
             }
         }
